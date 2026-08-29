@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: hexagonal-practice
+
+  datasource:
+    url: jdbc:h2:mem:testdb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop # 재시작할 때마다 테이블 새로 생성
+    show-sql: true          # 실행되는 sql 콘솔에 찍힘
+    properties:
+      hibernate:
+        format_sql: true    # sql 예쁘게 들여쓰기
+    database-platform: org.hibernate.dialect.H2Dialect
+
+  h2:
+    console:
+      enabled: true         # 브라우저에서 DB 직접 조회 가능
+      path: /h2-console
+
+server:
+  port: 8080
