@@ -1,0 +1,7 @@
+POST http://localhost:8080/api/posts
+Content-Type: application/json
+
+{
+  "title": "첫 글",
+  "content": "헥사고날 연습중"
+}
