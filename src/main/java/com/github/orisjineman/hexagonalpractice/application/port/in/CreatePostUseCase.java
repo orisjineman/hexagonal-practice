@@ -1,0 +1,7 @@
+package com.github.orisjineman.hexagonalpractice.application.port.in;
+
+import com.github.orisjineman.hexagonalpractice.domain.Post;
+
+public interface CreatePostUseCase {
+    Post createPost(String title, String content);
+}
