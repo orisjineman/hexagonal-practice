@@ -36,25 +36,37 @@ com.example.hexagonalpostapi
 │   └── Post
 ├── application
 │   ├── port.in                     # 도메인이 제공하는 기능 (Port In)
-│   │   └── CreatePostUseCase
+│   │   ├── CreatePostUseCase
+│   │   ├── GetPostUseCase
+│   │   ├── GetPostListUseCase
+│   │   └── SearchPostUseCase
 │   ├── port.out                    # 도메인이 필요로 하는 기능 (Port Out)
 │   │   └── PostRepository
-│   └── service                     # Port In의 구현체 (실제 비즈니스 로직)
-│       └── PostService
+│   ├── service                     # Port In의 구현체 (실제 비즈니스 로직)
+│   │   ├── PostService             # 생성(Command) 담당
+│   │   └── PostQueryService        # 조회(Query) 담당 — 쓰기/읽기 책임 분리
+│   └── exception                   # 비즈니스 예외 (HTTP를 모름)
+│       └── PostNotFoundException
 └── adapter
     ├── in.web                      # Port In의 호출자 (HTTP 진입점)
     │   ├── PostController
     │   ├── CreatePostRequest
-    │   └── PostResponse
-    └── out.persistence             # Port Out의 구현체 (JPA 기술)
+    │   ├── PostResponse
+    │   ├── PostWebMapper            # 도메인 ↔ 응답 DTO 변환 전담
+    │   ├── GlobalExceptionHandler    # 예외 → HTTP 상태코드 변환
+    │   └── ErrorResponse
+    └── out.persistence             # Port Out의 구현체 (JPA + QueryDSL 기술)
         ├── PostJpaEntity
-        ├── PostJpaRepository
+        ├── PostJpaRepository        # Spring Data JPA + Custom(QueryDSL) 상속
+        ├── PostJpaCustomRepository       # QueryDSL 커스텀 조회 인터페이스
+        ├── PostJpaCustomRepositoryImpl   # QueryDSL 실제 구현
+        ├── QueryDslConfig           # JPAQueryFactory Bean 등록
         └── PostPersistenceAdapter
 ```
 
 ---
 
-## 3. 요청 흐름: Controller → JPA 저장까지
+## 3. 요청 흐름: Controller → JPA 저장까지 (생성 API 예시)
 
 ```mermaid
 sequenceDiagram
@@ -83,6 +95,7 @@ sequenceDiagram
     Adapter->>Adapter: PostJpaEntity → 도메인 Post 변환
     Adapter-->>PostService: Post
     PostService-->>PostController: Post
+    PostController->>PostController: PostWebMapper.toResponse(post)
     PostController-->>Client: PostResponse (JSON)
 ```
 
@@ -92,15 +105,22 @@ sequenceDiagram
 |---|---|---|
 | 도메인 | `Post` | 순수 자바 객체(POJO), 비즈니스 개념 |
 | Port In | `CreatePostUseCase` | "게시글을 생성할 수 있다"는 규격 (인터페이스) |
-| Service | `PostService` | `CreatePostUseCase` 구현체, 실제 비즈니스 흐름 처리 |
-| Port Out | `PostRepository` | "저장할 수 있어야 한다"는 규격 (인터페이스) |
-| Adapter (in) | `PostController` | HTTP 요청을 받아 `CreatePostUseCase` 호출 |
+| Port In | `GetPostUseCase` | "id로 단건 조회할 수 있다"는 규격 |
+| Port In | `GetPostListUseCase` | "전체 목록을 조회할 수 있다"는 규격 |
+| Port In | `SearchPostUseCase` | "제목으로 검색할 수 있다"는 규격 |
+| Service | `PostService` | `CreatePostUseCase` 구현체, 생성 로직 처리 |
+| Service | `PostQueryService` | `GetPostUseCase` / `GetPostListUseCase` / `SearchPostUseCase` 구현체, 조회 로직 처리 |
+| Port Out | `PostRepository` | "저장/조회할 수 있어야 한다"는 규격 (인터페이스) |
+| Adapter (in) | `PostController` | HTTP 요청을 받아 각 UseCase 호출 |
+| Adapter (in) | `PostWebMapper` | 도메인 `Post` → `PostResponse` 변환 전담 |
+| Adapter (in) | `GlobalExceptionHandler` | 비즈니스 예외를 HTTP 응답으로 변환 |
 | Adapter (out) | `PostPersistenceAdapter` | `PostRepository` 구현체, 도메인 ↔ JPA 엔티티 변환 담당 |
 | 기술 상세 | `PostJpaEntity` | `@Entity`가 붙은 실제 JPA 엔티티 (도메인 `Post`와 분리) |
-| 기술 상세 | `PostJpaRepository` | Spring Data JPA가 자동 구현하는 저장소 인터페이스 |
+| 기술 상세 | `PostJpaRepository` | Spring Data JPA + QueryDSL Custom 인터페이스 상속 |
+| 기술 상세 | `PostJpaCustomRepositoryImpl` | QueryDSL로 짠 동적 쿼리 실제 구현 |
 
-**핵심 포인트:** Controller는 `CreatePostUseCase` 인터페이스만 알고, `PostService`라는 구체 클래스의 존재를 모른다.
-마찬가지로 `PostService`도 `PostRepository` 인터페이스만 알고, `PostPersistenceAdapter`나 JPA의 존재를 모른다.
+**핵심 포인트:** Controller는 각 UseCase 인터페이스만 알고, `PostService`/`PostQueryService`라는 구체 클래스의 존재를 모른다.
+마찬가지로 Service도 `PostRepository` 인터페이스만 알고, `PostPersistenceAdapter`나 JPA/QueryDSL의 존재를 모른다.
 양쪽 다 Spring이 런타임에 자동으로 연결(의존성 주입)해준다.
 
 ---
@@ -117,9 +137,89 @@ sequenceDiagram
 
 ---
 
-## 5. 다음 학습 예정
+## 5. Mapper 패턴 (응답 변환 중복 제거)
 
-- [ ] 조회 API 추가 (`GET /api/posts/{id}`)
-- [ ] QueryDSL로 동적 쿼리 붙이기
+생성/단건조회/목록조회/검색 API 모두 `Post` → `PostResponse` 변환이 필요한데, 이걸 각 메서드마다 반복하지 않고
+`PostWebMapper.toResponse(post)`로 한 곳에 모았다.
+
+- 위치: `adapter.in.web` — "도메인 객체를 HTTP 응답으로 어떻게 표현할지"는 웹 어댑터만의 관심사이기 때문.
+- 도메인은 자신이 HTTP로 어떻게 보여지는지 전혀 몰라야 한다.
+- 참고: `PostPersistenceAdapter` 내부의 `Post` ↔ `PostJpaEntity` 변환도 같은 성격의 관심사. 코드가 커지면 `PostPersistenceMapper`로 분리 가능 (현재는 메서드 하나뿐이라 보류).
+
+---
+
+## 6. QueryDSL 설정 (제목 검색 기능)
+
+### build.gradle
+
+```gradle
+dependencies {
+    // QueryDSL
+    implementation 'com.querydsl:querydsl-jpa:5.1.0:jakarta'
+    annotationProcessor 'com.querydsl:querydsl-apt:5.1.0:jakarta'
+    annotationProcessor 'jakarta.annotation:jakarta.annotation-api'
+    annotationProcessor 'jakarta.persistence:jakarta.persistence-api'
+}
+
+// Lombok 등 다른 annotationProcessor와 충돌 방지
+configurations {
+    compileOnly {
+        extendsFrom annotationProcessor
+    }
+}
+```
+
+- `:jakarta` 접미사 필수 (Spring Boot 3.x+ 는 `javax` → `jakarta` 네임스페이스로 이전됨. 빠뜨리면 `NoClassDefFoundError`)
+- 빌드하면 `build/generated/sources/annotationProcessor/java/main`에 `QPostJpaEntity` 같은 Q클래스가 자동 생성됨
+
+### 구조
+
+- `QueryDslConfig` — `JPAQueryFactory`를 Bean으로 등록
+- `PostJpaCustomRepository` — QueryDSL로 구현할 커스텀 조회 메서드 규격 (인터페이스)
+- `PostJpaCustomRepositoryImpl` — 실제 QueryDSL 코드 (`QPostJpaEntity`의 static 인스턴스로 타입 안전하게 조건 작성)
+- `PostJpaRepository extends JpaRepository<...>, PostJpaCustomRepository` — 기본 CRUD(Spring Data JPA 자동 구현) + 커스텀 조회(QueryDSL) 를 하나의 인터페이스로 합침
+
+### API
+
+```
+GET /api/posts/search?keyword=검색어
+```
+
+쿼리 파라미터 방식 채택. (참고: 검색 조건이 복잡해지면 `POST /api/posts/search` + body 형태도 실무에서 종종 쓰는 패턴 — 지금은 keyword 하나뿐이라 GET이 표준적)
+
+---
+
+## 7. 레이어별 예외처리
+
+헥사고날 원칙상 **도메인/애플리케이션 계층은 HTTP를 몰라야 한다.** 그래서 예외 정의와 예외→HTTP 변환 책임을 분리한다.
+
+| 계층 | 역할 |
+|---|---|
+| `application.exception` | 비즈니스 예외 정의 & 발생 (`PostNotFoundException`) — HTTP 상태코드 개념 없음 |
+| `adapter.in.web` | `@RestControllerAdvice`로 예외를 잡아서 HTTP 상태코드로 변환 |
+
+### 흐름
+
+```
+PostQueryService.getPost(id)
+  → postRepository.findById(id) 결과가 없으면
+  → PostNotFoundException 발생 (application 계층, RuntimeException 상속)
+       ↓
+GlobalExceptionHandler.handlePostNotFound() 가 잡아서
+  → 404 Not Found + ErrorResponse(status, message) 로 변환
+```
+
+- `PostNotFoundException`은 `RuntimeException`을 상속 (Checked Exception으로 만들면 모든 Port 인터페이스 시그니처에 `throws`가 번져서 인터페이스가 오염됨)
+- `GlobalExceptionHandler`는 `PostController`뿐 아니라 프로젝트의 모든 Controller에 공통 적용됨 — Controller 코드에는 try-catch가 하나도 없음
+
+---
+
+## 8. 다음 학습 예정
+
+- [x] 조회 API 추가 (`GET /api/posts/{id}`, `GET /api/posts`)
+- [x] QueryDSL로 동적 쿼리 붙이기 (제목 검색)
+- [x] Mapper 패턴으로 응답 변환 중복 제거
+- [x] 레이어별 예외처리 (`PostNotFoundException` + `GlobalExceptionHandler`)
 - [ ] 이벤트 발행 구조 (`ApplicationEventPublisher` → 추후 Kafka 등으로 확장)
 - [ ] JWT 인증 붙이기
+- [ ] JPA Adapter를 다른 기술(MongoDB 등)로 교체해보기 — Port/Adapter 분리 효과 체감용, 구조가 손에 익은 뒤 마지막 단계로 진행
