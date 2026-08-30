@@ -4,6 +4,9 @@ import com.github.orisjineman.hexagonalpractice.application.port.out.PostReposit
 import com.github.orisjineman.hexagonalpractice.domain.Post;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
+import java.util.Optional;
+
 @Component
 public class PostPersistenceAdapter implements PostRepository {
 
@@ -24,5 +27,20 @@ public class PostPersistenceAdapter implements PostRepository {
 
         // JPA Entity -> 도메인 Post 변환해서 리턴
         return new Post(saved.getId(), saved.getTitle(), saved.getContent(), saved.getCreatedAt());
+    }
+
+    @Override
+    public Optional<Post> findById(Long id) {
+        return postJpaRepository.findById(id)
+                // JPA Entity -> 도메인 Post 변환해서 리턴
+                .map(entity -> new Post(entity.getId(), entity.getTitle(), entity.getContent(), entity.getCreatedAt()));
+    }
+
+    @Override
+    public List<Post> findAll() {
+        return postJpaRepository.findAll().stream()
+                // JPA Entity -> 도메인 Post 변환해서 리턴
+                .map(entity -> new Post(entity.getId(), entity.getTitle(), entity.getContent(), entity.getCreatedAt()))
+                .toList();
     }
 }

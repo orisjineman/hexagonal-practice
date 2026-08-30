@@ -2,6 +2,13 @@ package com.github.orisjineman.hexagonalpractice.application.port.out;
 
 import com.github.orisjineman.hexagonalpractice.domain.Post;
 
+import java.util.List;
+import java.util.Optional;
+
 public interface PostRepository {
     Post save(Post post);
+
+    Optional<Post> findById(Long id);
+
+    List<Post> findAll();
 }
