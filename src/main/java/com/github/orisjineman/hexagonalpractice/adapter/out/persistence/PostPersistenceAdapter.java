@@ -43,4 +43,12 @@ public class PostPersistenceAdapter implements PostRepository {
                 .map(entity -> new Post(entity.getId(), entity.getTitle(), entity.getContent(), entity.getCreatedAt()))
                 .toList();
     }
+
+    @Override
+    public List<Post> findByTitleContaining(String keyword) {
+        return postJpaRepository.findByTitleContaining(keyword).stream()
+                // JPA Entity -> 도메인 Post 변환해서 리턴
+                .map(entity -> new Post(entity.getId(), entity.getTitle(), entity.getContent(), entity.getCreatedAt()))
+                .toList();
+    }
 }

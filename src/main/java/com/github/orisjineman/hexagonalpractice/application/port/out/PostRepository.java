@@ -11,4 +11,6 @@ public interface PostRepository {
     Optional<Post> findById(Long id);
 
     List<Post> findAll();
+
+    List<Post> findByTitleContaining(String keyword);
 }
