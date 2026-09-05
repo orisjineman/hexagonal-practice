@@ -214,12 +214,44 @@ GlobalExceptionHandler.handlePostNotFound() 가 잡아서
 
 ---
 
-## 8. 다음 학습 예정
+## 8. 이벤트 발행 & 비동기 처리
+
+게시글이 생성되면 이벤트를 발행하고, 리스너가 이를 구독해서 처리하는 구조. 나중에 Kafka 등 외부 메시지 브로커로 확장할 것을 대비해 Spring 내장 `ApplicationEventPublisher`로 먼저 연습.
+
+### 동기 vs 이벤트 발행
+
+- **동기 호출**: "이거 해줘" → 결과를 기다림 → 결과를 받음 (지금까지 만든 대부분의 흐름)
+- **이벤트 발행**: "이런 일이 일어났다"라고 알리기만 함 — 누가 듣는지, 언제 처리하는지 발행자는 신경 안 씀
+
+### 구조
+
+- `PostCreatedEvent` (`domain` 패키지) — 순수 자바 객체. "게시글이 생성됐다"는 사실만 담음, 프레임워크 의존 없음
+- `PostService.createPost()` — 저장 후 `ApplicationEventPublisher.publishEvent(new PostCreatedEvent(...))` 호출
+- `PostCreatedEventListener` (`application.service`) — `@EventListener`로 구독, 로그 출력
+
+### 동기 → 비동기 전환
+
+기본값은 동기라서, 이벤트 발행 시 리스너 처리(`handle()`)가 끝날 때까지 `createPost()`가 기다리고 트랜잭션도 같이 묶인다. 리스너 작업이 오래 걸리면 응답이 느려지는 문제가 있어 `@Async`로 비동기 전환.
+
+```
+createPost() → Post 저장 → 이벤트 발행 → 리스너를 별도 스레드에 맡기고 바로 응답 리턴
+                                              (리스너 처리를 기다리지 않음)
+```
+
+- `AsyncConfig` (`adapter.out.persistence`) — `@EnableAsync` + `eventTaskExecutor`라는 이름의 커스텀 `ThreadPoolTaskExecutor` Bean 등록 (corePoolSize 2, maxPoolSize 5, queueCapacity 50)
+- `PostCreatedEventListener.handle()`에 `@Async("eventTaskExecutor")` 적용
+- 리스너 로그에 `Thread.currentThread().getName()`을 찍어서 별도 스레드(`event-task-*`)에서 실행되는 걸 직접 확인
+
+**삽질 포인트 (기록):** `AsyncConfig`에 `@Configuration` 대신 `@Configurable`을 잘못 붙였더니(import 자동완성 함정 — `org.springframework.beans.factory.annotation.Configurable`), Bean 등록 자체가 안 돼서 `@Async`가 조용히 무시되고 계속 동기로 동작했음. `@Configuration`(`org.springframework.context.annotation`)으로 수정 후 정상 동작.
+
+---
+
+## 9. 다음 학습 예정
 
 - [x] 조회 API 추가 (`GET /api/posts/{id}`, `GET /api/posts`)
 - [x] QueryDSL로 동적 쿼리 붙이기 (제목 검색)
 - [x] Mapper 패턴으로 응답 변환 중복 제거
 - [x] 레이어별 예외처리 (`PostNotFoundException` + `GlobalExceptionHandler`)
-- [ ] 이벤트 발행 구조 (`ApplicationEventPublisher` → 추후 Kafka 등으로 확장)
-- [ ] JWT 인증 붙이기
+- [x] 이벤트 발행 구조 (`ApplicationEventPublisher`) + `@Async`로 비동기 처리
+- [ ] JWT 인증 붙이기 (진행 중 — Spring Security + JJWT 의존성 추가 완료)
 - [ ] JPA Adapter를 다른 기술(MongoDB 등)로 교체해보기 — Port/Adapter 분리 효과 체감용, 구조가 손에 익은 뒤 마지막 단계로 진행
