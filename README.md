@@ -62,35 +62,55 @@ Spring Boot로 헥사고날 아키텍처(Port & Adapter 패턴)를 직접 뜯어
 ```
 com.example.hexagonalpostapi
 ├── domain                          # 순수 자바 객체(POJO), 프레임워크 의존 없음
-│   └── Post
+│   ├── Post
+│   ├── PostCreatedEvent            # 도메인 이벤트
+│   └── User
 ├── application
 │   ├── port.in                     # 도메인이 제공하는 기능 (Port In)
 │   │   ├── CreatePostUseCase
 │   │   ├── GetPostUseCase
 │   │   ├── GetPostListUseCase
-│   │   └── SearchPostUseCase
+│   │   ├── SearchPostUseCase
+│   │   ├── SignUpUseCase
+│   │   └── LoginUseCase
 │   ├── port.out                    # 도메인이 필요로 하는 기능 (Port Out)
-│   │   └── PostRepository
+│   │   ├── PostRepository
+│   │   ├── UserRepository
+│   │   └── TokenProvider           # 토큰 발급 방식 추상화 (JWT ↔ 다른 방식 교체 대비)
 │   ├── service                     # Port In의 구현체 (실제 비즈니스 로직)
 │   │   ├── PostService             # 생성(Command) 담당
-│   │   └── PostQueryService        # 조회(Query) 담당 — 쓰기/읽기 책임 분리
+│   │   ├── PostQueryService        # 조회(Query) 담당 — 쓰기/읽기 책임 분리
+│   │   ├── PostCreatedEventListener # 이벤트 구독, 비동기 처리
+│   │   ├── UserService             # 회원가입
+│   │   └── AuthService             # 로그인, 토큰 발급 위임
 │   └── exception                   # 비즈니스 예외 (HTTP를 모름)
-│       └── PostNotFoundException
+│       ├── PostNotFoundException
+│       ├── DuplicateEmailException
+│       └── InvalidCredentialsException
 └── adapter
     ├── in.web                      # Port In의 호출자 (HTTP 진입점)
     │   ├── PostController
-    │   ├── CreatePostRequest
-    │   ├── PostResponse
+    │   ├── CreatePostRequest / PostResponse
     │   ├── PostWebMapper            # 도메인 ↔ 응답 DTO 변환 전담
+    │   ├── AuthController           # 회원가입/로그인 엔드포인트
+    │   ├── SignUpRequest / LoginRequest / LoginResponse
+    │   ├── UserResponse / UserWebMapper
+    │   ├── JwtAuthenticationFilter  # 요청마다 토큰 검증, 인증정보 등록
+    │   ├── SecurityConfig           # 경로별 인증 필요 여부, STATELESS 설정
     │   ├── GlobalExceptionHandler    # 예외 → HTTP 상태코드 변환
     │   └── ErrorResponse
-    └── out.persistence             # Port Out의 구현체 (JPA + QueryDSL 기술)
-        ├── PostJpaEntity
-        ├── PostJpaRepository        # Spring Data JPA + Custom(QueryDSL) 상속
-        ├── PostJpaCustomRepository       # QueryDSL 커스텀 조회 인터페이스
-        ├── PostJpaCustomRepositoryImpl   # QueryDSL 실제 구현
-        ├── QueryDslConfig           # JPAQueryFactory Bean 등록
-        └── PostPersistenceAdapter
+    └── out
+        ├── persistence              # Port Out의 구현체 (JPA + QueryDSL 기술)
+        │   ├── PostJpaEntity / PostJpaRepository
+        │   ├── PostJpaCustomRepository / PostJpaCustomRepositoryImpl  # QueryDSL
+        │   ├── QueryDslConfig        # JPAQueryFactory Bean 등록
+        │   ├── PostPersistenceAdapter
+        │   ├── UserJpaEntity / UserJpaRepository
+        │   ├── UserPersistenceAdapter
+        │   ├── SecurityBeanConfig    # PasswordEncoder(BCrypt) Bean 등록
+        │   └── AsyncConfig           # 이벤트 리스너 비동기 처리용 스레드풀
+        └── security
+            └── JwtTokenProvider      # TokenProvider(Port Out) 구현 + 토큰 검증 담당
 ```
 
 ---
@@ -275,12 +295,137 @@ createPost() → Post 저장 → 이벤트 발행 → 리스너를 별도 스레
 
 ---
 
-## 10. 다음 학습 예정
+## 10. User 도메인 & JWT 인증
+
+회원가입 → 로그인(JWT 발급) → 인증 필요한 API 보호까지의 전체 흐름.
+
+### 비밀번호는 BCrypt로 암호화
+
+- `SecurityBeanConfig`(`adapter.out.persistence`)에서 `PasswordEncoder` Bean으로 `BCryptPasswordEncoder` 등록
+- `User.create()`는 암호화된 비밀번호만 파라미터로 받음 — **도메인은 "어떻게 암호화하는지" 모름**, 암호화는 Service(`UserService`)가 전담
+- 응답 DTO(`UserResponse`)에는 비밀번호 필드를 아예 두지 않음
+
+### 회원가입 흐름
+
+```
+AuthController.signUp()
+  → SignUpUseCase.signUp() (Port In)
+  → UserService: 이메일 중복 체크(existsByEmail) → 중복이면 DuplicateEmailException
+  → passwordEncoder.encode()로 암호화
+  → User.create() → UserRepository.save() (Port Out)
+  → UserPersistenceAdapter가 UserJpaEntity로 변환해 저장
+```
+
+- `UserJpaEntity`도 `PostJpaEntity`와 같은 이유로 도메인 `User`와 분리, DB 레벨에서도 `@Column(unique = true)`로 이메일 중복 방지 (Service의 중복 체크와 별개로 동시 요청 경쟁 상황에 대한 최후 방어선)
+- `UserJpaEntity`의 기본 생성자를 `protected`로 둔 이유: JPA는 리플렉션으로 객체를 생성하므로 `protected`/`private` 모두 문제없이 동작하지만, `public`으로 열어두면 외부에서 필드가 텅 빈 엔티티를 임의로 생성할 수 있어 이를 막기 위한 관례
+
+### 로그인 & 토큰 발급 — Port Out으로 한 번 더 감싸보기 (의도적 과설계 연습)
+
+`TokenProvider`(Port Out) 인터페이스를 만들어서, `AuthService`가 JWT라는 구체 기술을 몰라도 되게 분리했다.
+
+```
+application.port.out.TokenProvider        # createToken(email) 규격만 정의
+        ↑ implements
+adapter.out.security.JwtTokenProvider     # 실제 JJWT 라이브러리로 토큰 생성/검증
+```
+
+- `createToken()`만 `TokenProvider` Port Out으로 감쌈 — **토큰 발급은 Service(애플리케이션 로직)가 필요로 하는 것**이라 추상화할 가치가 있음
+- `getEmail()` / `isValid()`(토큰 검증)는 인터페이스에 포함하지 않고 `JwtTokenProvider`에만 둠 — **토큰 검증은 Security Filter(순수 인프라)의 관심사**라 도메인/애플리케이션이 알 필요조차 없다고 판단
+- 로그인 실패 시(`InvalidCredentialsException`) 이메일이 없는 경우와 비밀번호가 틀린 경우를 구분하지 않고 동일한 예외로 처리 — 이메일 존재 여부가 공격자에게 유추되는 것을 막기 위한 보안 관례
+
+```
+AuthController.login()
+  → LoginUseCase.login() (Port In)
+  → AuthService: findByEmail → 없으면 InvalidCredentialsException
+                → passwordEncoder.matches()로 비밀번호 검증 → 틀리면 동일 예외
+                → tokenProvider.createToken() (Port Out) → JWT 문자열 반환
+```
+
+### 로그인 흐름 (토큰 발급)
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant AuthController as AuthController<br/>(adapter.in.web)
+    participant LoginUseCase as LoginUseCase<br/>(Port In, interface)
+    participant AuthService as AuthService<br/>(application.service)
+    participant UserRepository as UserRepository<br/>(Port Out, interface)
+    participant PasswordEncoder as PasswordEncoder<br/>(BCrypt)
+    participant TokenProvider as TokenProvider<br/>(Port Out, interface)
+    participant JwtTokenProvider as JwtTokenProvider<br/>(adapter.out.security)
+
+    Client->>AuthController: POST /api/auth/login<br/>{email, password}
+    AuthController->>LoginUseCase: login(email, password)
+    LoginUseCase->>AuthService: (실제 실행)
+    AuthService->>UserRepository: findByEmail(email)
+    UserRepository-->>AuthService: User (없으면 InvalidCredentialsException)
+    AuthService->>PasswordEncoder: matches(rawPassword, user.password)
+    PasswordEncoder-->>AuthService: true (틀리면 동일 예외)
+    AuthService->>TokenProvider: createToken(email)
+    Note over TokenProvider,JwtTokenProvider: JwtTokenProvider가<br/>TokenProvider를 구현
+    TokenProvider->>JwtTokenProvider: (실제 실행)
+    JwtTokenProvider-->>AuthService: JWT 문자열
+    AuthService-->>AuthController: JWT 문자열
+    AuthController-->>Client: LoginResponse(accessToken)
+```
+
+### 인증이 필요한 요청 흐름 (JWT 필터)
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Filter as JwtAuthenticationFilter<br/>(adapter.in.web)
+    participant JwtTokenProvider as JwtTokenProvider<br/>(adapter.out.security)
+    participant SecurityContext as SecurityContextHolder
+    participant SecurityConfig as SecurityConfig<br/>(SecurityFilterChain)
+    participant PostController as PostController
+
+    Client->>Filter: GET /api/posts<br/>Authorization: Bearer {token}
+    Filter->>Filter: resolveToken() — 헤더에서 토큰 추출
+    Filter->>JwtTokenProvider: isValid(token)
+    JwtTokenProvider-->>Filter: true
+    Filter->>JwtTokenProvider: getEmail(token)
+    JwtTokenProvider-->>Filter: email
+    Filter->>SecurityContext: setAuthentication(email)
+    Filter->>SecurityConfig: 요청 통과
+    Note over SecurityConfig: SecurityContext에 인증 정보 있음<br/>→ authenticated 통과
+    SecurityConfig->>PostController: 요청 전달
+    PostController-->>Client: 200 OK + 게시글 목록
+
+    Note over Client,SecurityConfig: 토큰이 없거나 무효한 경우<br/>SecurityContext에 인증 정보가 없어<br/>SecurityConfig 단계에서 401 응답
+```
+
+### Spring Security 설정 요약
+
+```
+SecurityConfig (SecurityFilterChain)
+    ├── /api/auth/**, /h2-console/** → permitAll (인증 없이 허용)
+    └── 그 외 모든 요청 → authenticated (SecurityContext에 인증 정보 없으면 401)
+```
+
+- `SessionCreationPolicy.STATELESS` — 서버가 세션을 만들거나 유지하지 않는다는 선언. 세션 방식과 달리 서버가 로그인 상태를 기억하지 않고, 매 요청마다 클라이언트가 들고 온 토큰만으로 판단
+- `csrf().disable()` — CSRF는 쿠키/세션 기반 인증에서 주로 문제되는 공격이라, 매 요청 헤더에 토큰을 직접 실어보내는 JWT 방식에선 관례적으로 비활성화
+- `addFilterBefore(JwtAuthenticationFilter, ...)` — 커스텀 필터를 Spring Security 기본 필터 체인 앞에 끼워넣음
+
+### 세션 vs JWT 핵심 차이
+
+| | 세션 | JWT |
+|---|---|---|
+| 로그인 정보 저장 위치 | 서버 (메모리/DB/Redis) | 클라이언트 (토큰 자체에 정보 포함) |
+| 서버가 매 요청마다 하는 일 | 세션 ID로 저장소 조회 | 토큰 서명 검증만 (저장소 조회 불필요) |
+| 로그아웃/강제 만료 | 서버에서 세션 삭제 시 즉시 반영 | 토큰 자체를 무효화하기 어려움 (만료시간까지 유효) |
+| 서버 확장성 | 여러 서버 간 세션 공유 필요 | Stateless라 서버를 그냥 늘리면 됨 |
+
+---
+
+## 11. 다음 학습 예정
 
 - [x] 조회 API 추가 (`GET /api/posts/{id}`, `GET /api/posts`)
 - [x] QueryDSL로 동적 쿼리 붙이기 (제목 검색)
 - [x] Mapper 패턴으로 응답 변환 중복 제거
 - [x] 레이어별 예외처리 (`PostNotFoundException` + `GlobalExceptionHandler`)
 - [x] 이벤트 발행 구조 (`ApplicationEventPublisher`) + `@Async`로 비동기 처리
-- [ ] JWT 인증 붙이기 (진행 중 — Spring Security + JJWT 의존성 추가 완료)
+- [x] JWT 인증 붙이기 (회원가입 → 로그인 → 인증 필요 API 보호까지 전체 흐름 완성)
 - [ ] JPA Adapter를 다른 기술(MongoDB 등)로 교체해보기 — Port/Adapter 분리 효과 체감용, 구조가 손에 익은 뒤 마지막 단계로 진행
+- [ ] JWT `secretKey` 하드코딩을 `application.yml`/환경변수로 분리 (현재는 연습 단계라 코드에 상수로 둠 — 실무에서는 절대 이렇게 하면 안 됨)
+- [ ] 단위테스트 코드 추가하기
