@@ -1,5 +1,6 @@
 package com.github.orisjineman.hexagonalpractice.adapter.in.web;
 
+import com.github.orisjineman.hexagonalpractice.application.exception.DuplicateEmailException;
 import com.github.orisjineman.hexagonalpractice.application.exception.PostNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -13,5 +14,11 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handlePageNotFound(PostNotFoundException e) {
         ErrorResponse error = new ErrorResponse(HttpStatus.NOT_FOUND.value(), e.getMessage());
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
+    }
+
+    @ExceptionHandler(DuplicateEmailException.class)
+    public ResponseEntity<ErrorResponse> handleDuplicateEmail(DuplicateEmailException e) {
+        ErrorResponse error = new ErrorResponse(HttpStatus.CONFLICT.value(), e.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(error);
     }
 }
