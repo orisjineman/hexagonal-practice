@@ -7,11 +7,11 @@ import java.time.LocalDateTime;
 @Getter
 public class PostCreatedEvent {
 
-    private final Long postId;
+    private final String postId;    // Long → String
     private final String title;
     private final LocalDateTime occurredAt;
 
-    public PostCreatedEvent(Long postId, String title) {
+    public PostCreatedEvent(String postId, String title) {
         this.postId = postId;
         this.title = title;
         this.occurredAt = LocalDateTime.now();

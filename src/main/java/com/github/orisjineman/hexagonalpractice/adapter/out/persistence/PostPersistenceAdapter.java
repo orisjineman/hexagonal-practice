@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 import java.util.Optional;
 
-@Component
+//@Component
 public class PostPersistenceAdapter implements PostRepository {
 
     private final PostJpaRepository postJpaRepository;  // 진짜 JPA 기술
@@ -18,29 +18,31 @@ public class PostPersistenceAdapter implements PostRepository {
 
     @Override
     public Post save(Post post) {
+        Long jpaId = post.getId() != null ? Long.valueOf(post.getId()): null;
+
         // 도메인 Post -> JPA Entity 변환
         PostJpaEntity entity = new PostJpaEntity(
-                post.getId(), post.getTitle(), post.getContent(), post.getCreatedAt()
+                jpaId, post.getTitle(), post.getContent(), post.getCreatedAt()
         );
 
         PostJpaEntity saved = postJpaRepository.save(entity);
 
         // JPA Entity -> 도메인 Post 변환해서 리턴
-        return new Post(saved.getId(), saved.getTitle(), saved.getContent(), saved.getCreatedAt());
+        return new Post(String.valueOf(saved.getId()), saved.getTitle(), saved.getContent(), saved.getCreatedAt());
     }
 
     @Override
-    public Optional<Post> findById(Long id) {
-        return postJpaRepository.findById(id)
+    public Optional<Post> findById(String id) {
+        return postJpaRepository.findById(Long.valueOf(id))
                 // JPA Entity -> 도메인 Post 변환해서 리턴
-                .map(entity -> new Post(entity.getId(), entity.getTitle(), entity.getContent(), entity.getCreatedAt()));
+                .map(entity -> new Post(String.valueOf(entity.getId()), entity.getTitle(), entity.getContent(), entity.getCreatedAt()));
     }
 
     @Override
     public List<Post> findAll() {
         return postJpaRepository.findAll().stream()
                 // JPA Entity -> 도메인 Post 변환해서 리턴
-                .map(entity -> new Post(entity.getId(), entity.getTitle(), entity.getContent(), entity.getCreatedAt()))
+                .map(entity -> new Post(String.valueOf(entity.getId()), entity.getTitle(), entity.getContent(), entity.getCreatedAt()))
                 .toList();
     }
 
@@ -48,7 +50,7 @@ public class PostPersistenceAdapter implements PostRepository {
     public List<Post> findByTitleContaining(String keyword) {
         return postJpaRepository.findByTitleContaining(keyword).stream()
                 // JPA Entity -> 도메인 Post 변환해서 리턴
-                .map(entity -> new Post(entity.getId(), entity.getTitle(), entity.getContent(), entity.getCreatedAt()))
+                .map(entity -> new Post(String.valueOf(entity.getId()), entity.getTitle(), entity.getContent(), entity.getCreatedAt()))
                 .toList();
     }
 }

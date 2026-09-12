@@ -35,7 +35,7 @@ public class PostController {
     }
 
     @GetMapping("/{id}")
-    public PostResponse getPost(@PathVariable Long id) {
+    public PostResponse getPost(@PathVariable String id) {
         Post post = getPostUseCase.getPost(id);
         return PostWebMapper.toResponse(post);
     }

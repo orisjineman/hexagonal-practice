@@ -25,18 +25,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter { // OncePerRe
             throws ServletException, IOException {
 
         String token = resolveToken(request);
+        System.out.println("[JWT필터] URI: " + request.getRequestURI() + ", Method: " + request.getMethod());
+        System.out.println("[JWT필터] 추출된 토큰: " + token);
 
-        // 토큰이 유효하면 SecurityContextHolder에 인증 정보를 등록: "이 요청은 인증된 사용자다"라고 Spring Security에 알리는 방법
         if (token != null && jwtTokenProvider.isValid(token)) {
             String email = jwtTokenProvider.getEmail(token);
+            System.out.println("[JWT필터] 토큰 유효, email: " + email);
 
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(email, null, Collections.emptyList());
-
             SecurityContextHolder.getContext().setAuthentication(authentication);
+        } else {
+            System.out.println("[JWT필터] 토큰 무효하거나 없음");
         }
 
-        // 토큰이 없거나 무효해도 예외를 던지지 않고 그냥 통과시킴: 인증이 필요한지 아닌지는 다음 단계(SecurityConfig)에서 판단하게 위임
         filterChain.doFilter(request, response);
     }
 

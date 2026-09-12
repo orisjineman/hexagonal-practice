@@ -1,7 +1,7 @@
 ### 게시글 생성
 POST http://localhost:8080/api/posts
 Content-Type: application/json
-Authorization: Bearer eyJhbGciOiJIUzM4NCJ9.eyJzdWIiOiJ0ZXN0QHRlc3QuY29tIiwiaWF0IjoxNzg4Njk5MTE5LCJleHAiOjE3ODg3MDI3MTl9.mLyYGhK3cOhJNO40RItQKDnRmiufzoKa8kiJBzQy-xo1mMamvZvaBErofv8lmJbq
+Authorization: Bearer eyJhbGciOiJIUzM4NCJ9.eyJzdWIiOiJ0ZXN0QHRlc3QuY29tIiwiaWF0IjoxNzg5MTk4MTIyLCJleHAiOjE3ODkyMDE3MjJ9.zptR7APAzpD_lmS-3Va4komtChamcPvDUuayqM0gnTDwj0w_liOsKd4BCX2XC6a9
 
 {
   "title": "첫 글",
@@ -9,13 +9,16 @@ Authorization: Bearer eyJhbGciOiJIUzM4NCJ9.eyJzdWIiOiJ0ZXN0QHRlc3QuY29tIiwiaWF0I
 }
 
 ### 단건 조회
-GET http://localhost:8080/api/posts/1
+GET http://localhost:8080/api/posts/6aa4ff322d70adeed3bc4015
+Authorization: Bearer eyJhbGciOiJIUzM4NCJ9.eyJzdWIiOiJ0ZXN0QHRlc3QuY29tIiwiaWF0IjoxNzg5MTk4MTIyLCJleHAiOjE3ODkyMDE3MjJ9.zptR7APAzpD_lmS-3Va4komtChamcPvDUuayqM0gnTDwj0w_liOsKd4BCX2XC6a9
 
 ### 목록 조회
 GET http://localhost:8080/api/posts
+Authorization: Bearer eyJhbGciOiJIUzM4NCJ9.eyJzdWIiOiJ0ZXN0QHRlc3QuY29tIiwiaWF0IjoxNzg5MTk4MTIyLCJleHAiOjE3ODkyMDE3MjJ9.zptR7APAzpD_lmS-3Va4komtChamcPvDUuayqM0gnTDwj0w_liOsKd4BCX2XC6a9
 
 ### 제목 검색
 GET http://localhost:8080/api/posts/search?keyword=첫
+Authorization: Bearer eyJhbGciOiJIUzM4NCJ9.eyJzdWIiOiJ0ZXN0QHRlc3QuY29tIiwiaWF0IjoxNzg5MTk4MTIyLCJleHAiOjE3ODkyMDE3MjJ9.zptR7APAzpD_lmS-3Va4komtChamcPvDUuayqM0gnTDwj0w_liOsKd4BCX2XC6a9
 
 ### 존재하지 않는 게시글 조회 (404 나와야 정상)
 GET http://localhost:8080/api/posts/9999
@@ -27,15 +30,6 @@ Content-Type: application/json
 {
   "email": "test@test.com",
   "password": "password123"
-}
-
-### 중복 이메일 재시도 (409 나와야 정상)
-POST http://localhost:8080/api/auth/signup
-Content-Type: application/json
-
-{
-  "email": "test@test.com",
-  "password": "password456"
 }
 
 ### 로그인 (응답의 accessToken 값을 복사해서 아래 4번 요청에 사용)
@@ -52,4 +46,4 @@ GET http://localhost:8080/api/posts
 
 ### 토큰 넣고 게시글 목록 조회 (200 떠야 정상 - Bearer 뒤에 2번 응답의 accessToken 붙여넣기)
 GET http://localhost:8080/api/posts
-Authorization: Bearer eyJhbGciOiJIUzM4NCJ9.eyJzdWIiOiJ0ZXN0QHRlc3QuY29tIiwiaWF0IjoxNzg4Njk5MTE5LCJleHAiOjE3ODg3MDI3MTl9.mLyYGhK3cOhJNO40RItQKDnRmiufzoKa8kiJBzQy-xo1mMamvZvaBErofv8lmJbq
+Authorization: Bearer eyJhbGciOiJIUzM4NCJ9.eyJzdWIiOiJ0ZXN0QHRlc3QuY29tIiwiaWF0IjoxNzg5MTk3NDk3LCJleHAiOjE3ODkyMDEwOTd9.ehBs_4Z4R6qtvVc4bIb3SIiE4SjPkAFi-Ugl9_dbyea9Jtj7Pf8COYLXlyhdlaYo

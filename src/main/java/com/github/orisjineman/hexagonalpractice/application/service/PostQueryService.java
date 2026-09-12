@@ -21,7 +21,7 @@ public class PostQueryService implements GetPostUseCase, GetPostListUseCase, Sea
     }
 
     @Override
-    public Post getPost(Long id) {
+    public Post getPost(String id) {
         return postRepository.findById(id)
                 .orElseThrow(() -> new PostNotFoundException(id));
     }
