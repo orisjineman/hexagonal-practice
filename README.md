@@ -100,22 +100,28 @@ com.example.hexagonalpostapi
     │   ├── GlobalExceptionHandler    # 예외 → HTTP 상태코드 변환
     │   └── ErrorResponse
     └── out
-        ├── persistence              # Port Out의 구현체 (JPA + QueryDSL 기술)
-        │   ├── PostJpaEntity / PostJpaRepository
-        │   ├── PostJpaCustomRepository / PostJpaCustomRepositoryImpl  # QueryDSL
-        │   ├── QueryDslConfig        # JPAQueryFactory Bean 등록
-        │   ├── PostPersistenceAdapter
+        ├── persistence              # User는 JPA+QueryDSL, Post의 JPA 구현은 비활성(레거시 보존)
+        │   ├── PostJpaEntity / PostJpaRepository        # (비활성) Post의 예전 JPA 구현, 비교용 보존
+        │   ├── PostJpaCustomRepository / PostJpaCustomRepositoryImpl  # (비활성) QueryDSL
+        │   ├── QueryDslConfig        # JPAQueryFactory Bean 등록 (User 등에서 재사용 가능)
+        │   ├── PostPersistenceAdapter  # (비활성) @Component 제거, 코드는 비교 자료로 보존
         │   ├── UserJpaEntity / UserJpaRepository
         │   ├── UserPersistenceAdapter
         │   ├── SecurityBeanConfig    # PasswordEncoder(BCrypt) Bean 등록
         │   └── AsyncConfig           # 이벤트 리스너 비동기 처리용 스레드풀
+        ├── persistence.mongo         # Post의 실제 활성 구현 (JPA에서 교체됨)
+        │   ├── PostDocument          # @Document, id는 String(ObjectId)
+        │   ├── PostMongoRepository   # MongoRepository, 쿼리 메서드로 제목 검색
+        │   └── PostMongoPersistenceAdapter  # PostRepository(Port Out) 실제 구현체
         └── security
             └── JwtTokenProvider      # TokenProvider(Port Out) 구현 + 토큰 검증 담당
 ```
 
 ---
 
-## 4. 요청 흐름: Controller → JPA 저장까지 (생성 API 예시)
+## 4. 요청 흐름: Controller → JPA 저장까지 (생성 API 예시 — 최초 JPA 구현 당시 기록)
+
+> 이 다이어그램은 Post를 처음 JPA로 구현했을 때 그린 것. 현재 Post의 실제 저장 기술은 섹션 12에서 설명하는 MongoDB로 교체된 상태이며, 여기 나온 JPA 관련 클래스(`PostJpaEntity`, `PostPersistenceAdapter` 등)는 비활성 상태로 보존되어 있다. Controller~Service 흐름 자체는 기술 교체와 무관하게 동일하게 유지된다.
 
 ```mermaid
 sequenceDiagram
@@ -174,7 +180,7 @@ sequenceDiagram
 
 ---
 
-## 5. 왜 domain.Post 와 PostJpaEntity를 따로 두는가
+## 5. 왜 domain.Post 와 PostJpaEntity를 따로 두는가 (JPA 구현 당시 근거)
 
 지금은 필드가 완전히 똑같아서 낭비처럼 보이지만:
 
@@ -183,6 +189,8 @@ sequenceDiagram
 
 나중에 도메인 로직이 복잡해지거나(예: `Post`에 검증/계산 메서드 추가), DB 테이블 구조와 도메인 개념이 달라지기 시작하면
 이 둘을 분리해둔 게 진가를 발휘한다. `PostPersistenceAdapter`가 그 변환을 전담한다.
+
+> 현재 `PostJpaEntity`/`PostPersistenceAdapter`는 비활성 상태이며, 실제로는 `PostDocument`(MongoDB)가 같은 역할을 한다. 이 분리 원칙 자체는 기술이 바뀌어도 그대로 적용된다.
 
 ---
 
@@ -418,7 +426,47 @@ SecurityConfig (SecurityFilterChain)
 
 ---
 
-## 11. 다음 학습 예정
+## 11. Post 영속성 어댑터를 MongoDB로 교체 (Adapter 교체 실습)
+
+헥사고날의 핵심 가치("저장 기술을 바꿔도 domain/application이 안 바뀐다")를 직접 검증한 실습.
+
+### 사용 기술
+
+- Spring Data MongoDB + `de.flapdoodle.embed.mongo.spring4x`(임베디드 MongoDB, 설치 없이 앱 실행 시 자동 기동/종료)
+- `application.yml`에 `de.flapdoodle.mongodb.embedded.version` 지정 필수 (버전 미지정 시 기동 실패)
+
+### 교체 방식
+
+- 기존 JPA `PostPersistenceAdapter`는 `@Component`만 제거해 비활성화, 코드는 비교 자료로 보존
+- `adapter.out.persistence.mongo` 패키지에 `PostDocument`(`@Document`), `PostMongoRepository`(`MongoRepository`), `PostMongoPersistenceAdapter`(`PostRepository` 구현체)를 새로 작성해 실제 활성 구현으로 교체
+
+### 예상보다 파급이 컸던 지점 — id 타입 변경
+
+MongoDB의 기본 식별자(`ObjectId`)는 24자리 문자열이라, JPA 시절 `Long`이었던 `domain.Post.id`를 `String`으로 바꾸는 결정을 내렸다(A안 채택). 그 결과:
+
+- **영향 없음**: 저장 기술 교체 자체는 원래 계획대로 `adapter.out.persistence` 안에서 끝날 수 있었음
+- **영향 발생**: `id` 타입 변경은 도메인 모델 자체를 바꾸는 별개의 결정이라, 이를 참조하는 모든 계층이 도미노처럼 파급됨 — `Post`, `PostCreatedEvent`, `PostNotFoundException`, `GetPostUseCase`, `PostRepository`, `PostQueryService`, `PostController`, `PostResponse`
+
+> **배운 것:** "인프라를 바꾸는 것"과 "도메인 모델을 바꾸는 것"은 무게가 다른 변경이다. 헥사고날은 전자를 격리해주는 도구이지, 후자까지 공짜로 막아주지는 않는다.
+
+대안(B안: `domain.Post.id`를 `Long`으로 유지하고 Adapter 내부에서 `ObjectId ↔ Long` 변환)도 검토했으나, `ObjectId`가 분산 환경용으로 설계된 값이라 숫자로 억지 변환하면 해시 충돌·정밀도 손실 등 부작용이 있어 기각. 실무에서도 A안(ID 타입을 인프라에 맞춰 설계)이 더 흔한 선택.
+
+### 레거시 JPA 어댑터 처리
+
+비활성화된 `PostPersistenceAdapter`도 `PostRepository` 인터페이스를 구현하는 한 시그니처를 맞춰야 해서, `id` 타입 변경의 영향을 그대로 받았다. 내부에서 `Long.valueOf()` / `String.valueOf()`로 억지 변환을 넣어 컴파일만 통과시켜 둔 상태 — 이 번거로움 자체가 위에서 기각한 B안이 실무에서 어떤 모습일지 보여주는 축소판이기도 하다.
+
+### 트러블슈팅 기록
+
+| 증상 | 원인 | 해결 |
+|---|---|---|
+| 앱 기동 실패: `Set the de.flapdoodle.mongodb.embedded.version property` | 임베디드 MongoDB 버전 미지정 | `application.yml`에 `de.flapdoodle.mongodb.embedded.version` 추가 |
+| `No property 'findAllTitle' found for type 'PostDocument'` | `PostMongoRepository` 쿼리 메서드 이름 오타(`findAllTitleContaining`) | `findByTitleContaining`으로 수정 |
+| 게시글 생성(POST)은 되는데 목록 조회(GET)만 403 | JWT 인증 자체는 정상 동작 중이었고, 실제 원인은 별개의 MongoDB 쿼리 에러 | 로그로 필터 통과 여부를 먼저 확인해 인증 문제가 아님을 좁혀냄 |
+| `Command execution failed ... Field 'locale' is invalid in: { locale: "posts" }` | `@Document(collection = "posts")`처럼 `collection` 속성명을 명시하는 문법이 특정 라이브러리 버전 조합에서 애노테이션 파싱 오류를 일으키는 알려진 이슈 | `@Document("posts")`로 속성명 생략하고 값만 전달 |
+
+---
+
+## 12. 다음 학습 예정
 
 - [x] 조회 API 추가 (`GET /api/posts/{id}`, `GET /api/posts`)
 - [x] QueryDSL로 동적 쿼리 붙이기 (제목 검색)
@@ -426,6 +474,6 @@ SecurityConfig (SecurityFilterChain)
 - [x] 레이어별 예외처리 (`PostNotFoundException` + `GlobalExceptionHandler`)
 - [x] 이벤트 발행 구조 (`ApplicationEventPublisher`) + `@Async`로 비동기 처리
 - [x] JWT 인증 붙이기 (회원가입 → 로그인 → 인증 필요 API 보호까지 전체 흐름 완성)
-- [ ] JPA Adapter를 다른 기술(MongoDB 등)로 교체해보기 — Port/Adapter 분리 효과 체감용, 구조가 손에 익은 뒤 마지막 단계로 진행
+- [x] Post의 JPA Adapter를 MongoDB로 교체 (Port/Adapter 분리 효과 + 도메인 모델 변경의 파급 범위 체감)
 - [ ] JWT `secretKey` 하드코딩을 `application.yml`/환경변수로 분리 (현재는 연습 단계라 코드에 상수로 둠 — 실무에서는 절대 이렇게 하면 안 됨)
 - [ ] 단위테스트 코드 추가하기
