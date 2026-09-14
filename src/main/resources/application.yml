@@ -30,3 +30,7 @@ de:
     mongodb:
       embedded:
         version: 7.0.14
+
+jwt:
+  secret: ${JWT_SECRET}
+  expiration: ${JWT_EXPIRATION:3600000}

@@ -1,7 +1,7 @@
 ### 게시글 생성
 POST http://localhost:8080/api/posts
 Content-Type: application/json
-Authorization: Bearer eyJhbGciOiJIUzM4NCJ9.eyJzdWIiOiJ0ZXN0QHRlc3QuY29tIiwiaWF0IjoxNzg5MTk4MTIyLCJleHAiOjE3ODkyMDE3MjJ9.zptR7APAzpD_lmS-3Va4komtChamcPvDUuayqM0gnTDwj0w_liOsKd4BCX2XC6a9
+Authorization: Bearer eyJhbGciOiJIUzM4NCJ9.eyJzdWIiOiJ0ZXN0QHRlc3QuY29tIiwiaWF0IjoxNzg5Mzg2MjUxLCJleHAiOjE3ODkzODk4NTF9.FUfzy2DUux-EcggDIXBC6WyIAJACWd3jK8aG5GGrEnwWhAIByPT3XM1TjXJZbVM6
 
 {
   "title": "첫 글",
@@ -10,15 +10,15 @@ Authorization: Bearer eyJhbGciOiJIUzM4NCJ9.eyJzdWIiOiJ0ZXN0QHRlc3QuY29tIiwiaWF0I
 
 ### 단건 조회
 GET http://localhost:8080/api/posts/6aa4ff322d70adeed3bc4015
-Authorization: Bearer eyJhbGciOiJIUzM4NCJ9.eyJzdWIiOiJ0ZXN0QHRlc3QuY29tIiwiaWF0IjoxNzg5MTk4MTIyLCJleHAiOjE3ODkyMDE3MjJ9.zptR7APAzpD_lmS-3Va4komtChamcPvDUuayqM0gnTDwj0w_liOsKd4BCX2XC6a9
+Authorization: Bearer eyJhbGciOiJIUzM4NCJ9.eyJzdWIiOiJ0ZXN0QHRlc3QuY29tIiwiaWF0IjoxNzg5Mzg2MjUxLCJleHAiOjE3ODkzODk4NTF9.FUfzy2DUux-EcggDIXBC6WyIAJACWd3jK8aG5GGrEnwWhAIByPT3XM1TjXJZbVM6
 
 ### 목록 조회
 GET http://localhost:8080/api/posts
-Authorization: Bearer eyJhbGciOiJIUzM4NCJ9.eyJzdWIiOiJ0ZXN0QHRlc3QuY29tIiwiaWF0IjoxNzg5MTk4MTIyLCJleHAiOjE3ODkyMDE3MjJ9.zptR7APAzpD_lmS-3Va4komtChamcPvDUuayqM0gnTDwj0w_liOsKd4BCX2XC6a9
+Authorization: Bearer eyJhbGciOiJIUzM4NCJ9.eyJzdWIiOiJ0ZXN0QHRlc3QuY29tIiwiaWF0IjoxNzg5Mzg2MjUxLCJleHAiOjE3ODkzODk4NTF9.FUfzy2DUux-EcggDIXBC6WyIAJACWd3jK8aG5GGrEnwWhAIByPT3XM1TjXJZbVM6
 
 ### 제목 검색
 GET http://localhost:8080/api/posts/search?keyword=첫
-Authorization: Bearer eyJhbGciOiJIUzM4NCJ9.eyJzdWIiOiJ0ZXN0QHRlc3QuY29tIiwiaWF0IjoxNzg5MTk4MTIyLCJleHAiOjE3ODkyMDE3MjJ9.zptR7APAzpD_lmS-3Va4komtChamcPvDUuayqM0gnTDwj0w_liOsKd4BCX2XC6a9
+Authorization: Bearer eyJhbGciOiJIUzM4NCJ9.eyJzdWIiOiJ0ZXN0QHRlc3QuY29tIiwiaWF0IjoxNzg5Mzg2MjUxLCJleHAiOjE3ODkzODk4NTF9.FUfzy2DUux-EcggDIXBC6WyIAJACWd3jK8aG5GGrEnwWhAIByPT3XM1TjXJZbVM6
 
 ### 존재하지 않는 게시글 조회 (404 나와야 정상)
 GET http://localhost:8080/api/posts/9999

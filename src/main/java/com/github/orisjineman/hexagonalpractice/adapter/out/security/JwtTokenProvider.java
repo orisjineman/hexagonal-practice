@@ -4,19 +4,25 @@ import com.github.orisjineman.hexagonalpractice.application.port.out.TokenProvid
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
 import java.util.Date;
 
 @Component
 public class JwtTokenProvider implements TokenProvider {
 
-    // 실제로는 application.yml에서 주입받는 게 맞지만, 지금은 연습이니 상수로 시작
-    private final SecretKey secretKey = Keys.hmacShaKeyFor(
-            "this-is-a-very-long-secret-key-for-jwt-practice-project-1234".getBytes());
+    private final SecretKey secretKey;
+    private final long validityInMs;
 
-    private final long validityInMs = 1000L * 60 * 60;  // 1시간
+    public  JwtTokenProvider(
+            @Value("${jwt.secret}") String secret,
+            @Value("${jwt.expiration}") Long validityInMs) {
+        this.secretKey = Keys.hmacShaKeyFor(secret.getBytes());
+        this.validityInMs = validityInMs;
+    }
 
     public String createToken(String email) {
         Date now = new Date();
