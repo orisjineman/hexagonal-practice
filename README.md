@@ -341,6 +341,31 @@ adapter.out.security.JwtTokenProvider     # 실제 JJWT 라이브러리로 토�
 - `getEmail()` / `isValid()`(토큰 검증)는 인터페이스에 포함하지 않고 `JwtTokenProvider`에만 둠 — **토큰 검증은 Security Filter(순수 인프라)의 관심사**라 도메인/애플리케이션이 알 필요조차 없다고 판단
 - 로그인 실패 시(`InvalidCredentialsException`) 이메일이 없는 경우와 비밀번호가 틀린 경우를 구분하지 않고 동일한 예외로 처리 — 이메일 존재 여부가 공격자에게 유추되는 것을 막기 위한 보안 관례
 
+### secretKey / 만료시간 — 환경변수로 분리
+
+처음엔 `secretKey`를 `JwtTokenProvider` 코드 안에 상수로 하드코딩해뒀는데, 이후 환경변수 기반으로 교체했다.
+
+```java
+public JwtTokenProvider(
+        @Value("${jwt.secret}") String secret,
+        @Value("${jwt.expiration}") long validityInMs) {
+    this.secretKey = Keys.hmacShaKeyFor(secret.getBytes());
+    this.validityInMs = validityInMs;
+}
+```
+
+```yaml
+# application.yml
+jwt:
+  secret: ${JWT_SECRET}
+  expiration: ${JWT_EXPIRATION:3600000}   # 기본값 1시간(ms)
+```
+
+- `JWT_SECRET`은 기본값을 주지 않음 — 환경변수 설정을 빠뜨리고 실수로 앱을 띄우는 상황 자체를 막기 위한 의도. 환경변수 미설정 시 기동 실패.
+- `JWT_EXPIRATION`은 `:3600000`으로 기본값을 둬서, 굳이 안 정해도 1시간짜리로 동작하게 함.
+- 로컬 실행 시 IntelliJ Run Configuration의 Environment variables에 `JWT_SECRET` 등록 필요.
+- `application.yml` 자체는 git에 커밋되므로, 여기 실제 비밀 값을 직접 적는 건 여전히 노출 위험이 있음. 지금은 연습 단계라 로컬 환경변수로만 분리했지만, 실무에서는 `.env`(gitignore 대상)나 배포 환경의 시크릿 매니저에서 값을 주입하는 게 정석.
+
 ```
 AuthController.login()
   → LoginUseCase.login() (Port In)
@@ -475,5 +500,5 @@ MongoDB의 기본 식별자(`ObjectId`)는 24자리 문자열이라, JPA 시절 
 - [x] 이벤트 발행 구조 (`ApplicationEventPublisher`) + `@Async`로 비동기 처리
 - [x] JWT 인증 붙이기 (회원가입 → 로그인 → 인증 필요 API 보호까지 전체 흐름 완성)
 - [x] Post의 JPA Adapter를 MongoDB로 교체 (Port/Adapter 분리 효과 + 도메인 모델 변경의 파급 범위 체감)
-- [ ] JWT `secretKey` 하드코딩을 `application.yml`/환경변수로 분리 (현재는 연습 단계라 코드에 상수로 둠 — 실무에서는 절대 이렇게 하면 안 됨)
+- [x] JWT `secretKey` 하드코딩을 환경변수로 분리 (`@Value` + `application.yml`의 `${JWT_SECRET}` 참조, IntelliJ Run Configuration에 환경변수 등록)
 - [ ] 단위테스트 코드 추가하기
