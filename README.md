@@ -552,6 +552,59 @@ class PostServiceTest {
 
 > **핵심 감각:** 이 테스트는 `PostRepository`가 실제로 MongoDB로 구현됐는지 JPA로 구현됐는지 전혀 몰라도 된다 — 오직 `PostService`의 로직(저장 요청 → 이벤트 생성 → 발행 → 반환)만 검증한다. Port/Adapter 분리 덕분에 가능한, 외부 의존성 없는 빠른 단위테스트.
 
+### 예외 케이스 테스트 (`PostQueryService`)
+
+Mock의 리턴값을 테스트마다 다르게 설정해서, 같은 의존성(`PostRepository`)으로 "정상 조회"와 "존재하지 않음"을 둘 다 순식간에 재현.
+
+```java
+@Test
+void getPost_존재하지_않는_id로_조회하면_예외를_던진다() {
+    when(postRepository.findById("no-such-id")).thenReturn(Optional.empty());
+
+    assertThatThrownBy(() -> postQueryService.getPost("no-such-id"))
+            .isInstanceOf(PostNotFoundException.class)
+            .hasMessageContaining("no-such-id");
+}
+```
+
+- `assertThatThrownBy(() -> ...)` — 람다로 감싸서 실행 시점을 붙잡아야 예외 발생을 검증할 수 있음 (바로 호출하면 예외가 테스트 코드 자체를 끊어버림)
+- `.hasMessageContaining(...)` — 예외 메시지에 특정 값(예: 실제 id)이 포함됐는지까지 확인
+
+### 의존성이 여러 개인 Service 테스트 (`AuthService`)
+
+`UserRepository`, `PasswordEncoder`, `TokenProvider` 3개를 모두 Mock 처리해서 로그인 성공/이메일 없음/비밀번호 불일치 3가지 분기를 검증. `PasswordEncoder`도 Mock이라, 실제 BCrypt 연산이 뭔지 이 테스트는 전혀 몰라도 됨 — `matches(...)` 호출 시 `true`/`false`를 미리 정해두고 그 분기만 검증.
+
+- 의존성이 몇 개로 늘어나도 패턴은 동일: `@Mock` 선언 → `when(...).thenReturn(...)` → 실행 → 검증
+- 예외가 발생하는 케이스는 `verify()` 없이 `assertThatThrownBy`만으로 충분 (예외 발생 자체가 로직이 그 지점에서 멈췄다는 증거)
+
+### Mock이 필요 없는 순수 로직 테스트 (`JwtTokenProvider`)
+
+JWT 생성/서명/검증은 인터페이스로 감싼 게 아니라 실제 알고리즘 자체이므로, Mock 없이 `JwtTokenProvider`를 직접 생성해서 진짜 토큰으로 검증.
+
+```java
+@Test
+void 다른_시크릿키로_만든_토큰은_isValid가_false다() {
+    JwtTokenProvider originalProvider = new JwtTokenProvider(SECRET, 1000L * 60 * 60);
+    JwtTokenProvider differentSecretProvider = new JwtTokenProvider("different-secret...", 1000L * 60 * 60);
+
+    String token = differentSecretProvider.createToken("test@test.com");
+
+    assertThat(originalProvider.isValid(token)).isFalse();
+}
+
+@Test
+void 이미_만료된_토큰은_isValid가_false다() {
+    JwtTokenProvider jwtTokenProvider = new JwtTokenProvider(SECRET, -1000L);  // 음수로 즉시 만료 재현
+
+    String token = jwtTokenProvider.createToken("test@test.com");
+
+    assertThat(jwtTokenProvider.isValid(token)).isFalse();
+}
+```
+
+- 서로 다른 시크릿 키로 만든 두 `JwtTokenProvider` 인스턴스를 교차 검증해 위조/변조 감지를 확인
+- `validityInMs`에 음수를 넣으면 `Thread.sleep()` 없이도 "즉시 만료된 토큰" 상황을 재현 가능
+
 ### IntelliJ 트러블슈팅: 테스트는 통과하는데 메서드별 결과가 안 보임
 
 `Test Results` 트리를 펼쳐도 `PostTest` 하위의 개별 메서드명이 안 보이는 증상 — `@DisplayName`을 붙여도 해결 안 됨. **Settings → Build, Execution, Deployment → Build Tools → Gradle → "Run tests using:"** 가 `Gradle Test Runner`로 되어 있으면 가끔 트리 구조가 IntelliJ에 제대로 안 넘어오는 버그가 있음. `IntelliJ IDEA`로 바꾸면 해결.
@@ -568,5 +621,4 @@ class PostServiceTest {
 - [x] JWT 인증 붙이기 (회원가입 → 로그인 → 인증 필요 API 보호까지 전체 흐름 완성)
 - [x] Post의 JPA Adapter를 MongoDB로 교체 (Port/Adapter 분리 효과 + 도메인 모델 변경의 파급 범위 체감)
 - [x] JWT `secretKey` 하드코딩을 환경변수로 분리 (`@Value` + `application.yml`의 `${JWT_SECRET}` 참조, IntelliJ Run Configuration에 환경변수 등록)
-- [x] 단위테스트 코드 추가하기 (도메인 순수 객체 테스트 + Mockito로 PostService Mock 테스트)
-- [ ] 나머지 Service 단위테스트 확장: `PostQueryService`(예외 케이스), `AuthService`(로그인 성공/실패 분기), `JwtTokenProvider`(Mock 없는 순수 로직 테스트)
+- [x] 단위테스트 코드 추가하기 (도메인 순수 객체 테스트, PostService/PostQueryService/AuthService Mock 테스트, JwtTokenProvider 순수 로직 테스트)
